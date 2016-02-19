@@ -34,6 +34,14 @@ int main(int argc, char *argv[]) {
         if (recvlen > 0) {
             buf[recvlen] = 0;
             printf("Received message: %s\n", buf);
+            
+            printf("Sending reply...\n");
+            memcpy(buf, "Hi!", 4);
+            if (sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&client_addr, addrlen) < 0) {
+                perror("Sendto failed");
+                exit(1);
+            } else printf("Sendto succeeded\n");
+
         }
     }
 }

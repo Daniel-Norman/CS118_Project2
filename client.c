@@ -25,8 +25,16 @@ int main(int argc, char *argv[]) {
     memcpy(buf, "Hello, World!", 14);
     
     // Send messages (give destination on each call, because UDP just sends, doesn't do a TWH to secure a connection)
-    if (sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+    if (sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serv_addr, addrlen) < 0) {
         perror("Sendto failed");
         exit(1);
     } else printf("Sendto succeeded\n");
+    
+    while (1) {
+        int recvlen = recvfrom(sockfd, buf, 1024, 0, (struct sockaddr*)&serv_addr, &addrlen);
+        if (recvlen > 0) {
+            buf[recvlen] = 0;
+            printf("Received message: %s\n", buf);
+        }
+    }
 }
