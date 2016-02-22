@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 
 #define PORT 5555
+#define DATA_HEADER_SIZE 6
+#define DATA_SIZE 512
 
 int create_data_header(char *buf, int seqnum, int size, int last) {
     return sprintf(buf, "%02d%03d%d", seqnum, size, last);
@@ -16,7 +18,7 @@ int read_ack_header(char *buf, int* seqnum) {
     return 1;
 }
 
-char* file_data (int start, int size, FILE* file);
+int read_file(char* data, FILE* file, int start_pos, int* last);
 
 int main(int argc, char *argv[]) {
     int sockfd;
@@ -128,7 +130,10 @@ int main(int argc, char *argv[]) {
     
 }
 
-char* file_data (int start, int size, FILE* file) {
-    //TODO: Write function
-    return "Hello\n";
+int read_file(char* data, FILE* file, int start_pos, int* last) {
+    int read;
+    fseek(file, sizeof(char) * start_pos, SEEK_SET);
+    if ((read = fread(data, 1, DATA_SIZE, file)) == 0) error("Error reading file");
+    *last = feof(file);
+    return read;
 }
