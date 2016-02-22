@@ -21,12 +21,12 @@ int read_ack_header(char *buf, int* seqnum) {
 int create_packet (char *buffer, int pos, FILE* fp) {
     int* last;
     int size;
-    size = read_file (buffer + DATA_HEADER_SIZE, pos, fp, last);
+    size = read_file(buffer + DATA_HEADER_SIZE, fp, pos, last);
     create_data_header (buffer, pos, size, *last);
     return 1;
 }
 
-char* file_data (int start, int size, FILE* file);
+int read_file(char* data, FILE* file, int start_pos, int* last);
 
 int main(int argc, char *argv[]) {
     int sockfd;
@@ -129,7 +129,10 @@ int main(int argc, char *argv[]) {
     }    
 }
 
-char* file_data (int start, int size, FILE* file) {
-    //TODO: Write function
-    return "Hello\n";
+int read_file(char* data, FILE* file, int start_pos, int* last) {
+    int read;
+    fseek(file, sizeof(char) * start_pos, SEEK_SET);
+    if ((read = fread(data, 1, DATA_SIZE, file)) == 0) error("Error reading file");
+    *last = feof(file);
+    return read;
 }
