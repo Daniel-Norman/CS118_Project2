@@ -5,6 +5,39 @@
 #include <string.h> // for memset
 
 #define PORT 5555
+#define DATA_HEADER_SIZE 6
+
+int create_ack_header(char* buf, int seqnum) {
+    return sprintf(buf, "%02d", seqnum);
+}
+
+int read_data_header(char* buf, int* seqnum, int* size, int* last) {
+    char subbuf[4];
+    int i = 0;
+    
+    memcpy(subbuf, buf + i, 2);
+    subbuf[2] = 0;
+    *seqnum = atoi(subbuf);
+    i += 2;
+    
+    memcpy(subbuf, buf + i, 3);
+    subbuf[3] = 0;
+    *size = atoi(subbuf);
+    i += 3;
+    
+    memcpy(subbuf, buf + i, 1);
+    subbuf[1] = 0;
+    *last = atoi(subbuf);
+    i += 1;
+    
+    return 1;
+}
+
+int read_packet(char* input, char* data, int* seqnum, int* size, int* last) {
+    read_data_header(input, seqnum, size, last);
+    memcpy(data, input + DATA_HEADER_SIZE, *size);
+    return 1;
+}
 
 int main(int argc, char *argv[]) {
     int sockfd;

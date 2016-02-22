@@ -6,6 +6,16 @@
 
 #define PORT 5555
 
+
+int create_data_header(char *buf, int seqnum, int size, int last) {
+    return sprintf(buf, "%02d%03d%d", seqnum, size, last);
+}
+
+int read_ack_header(char *buf, int* seqnum) {
+    *seqnum = atoi(buf);
+    return 1;
+}
+
 int main(int argc, char *argv[]) {
     int sockfd;
     struct sockaddr_in serv_addr, client_addr;
