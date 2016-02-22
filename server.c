@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 
 #define PORT 5555
+#define DATA_HEADER_SIZE 6
+#define DATA_SIZE 512
 
 int create_data_header(char *buf, int seqnum, int size, int last) {
     return sprintf(buf, "%02d%03d%d", seqnum, size, last);
@@ -13,6 +15,14 @@ int create_data_header(char *buf, int seqnum, int size, int last) {
 
 int read_ack_header(char *buf, int* seqnum) {
     *seqnum = atoi(buf);
+    return 1;
+}
+
+int create_packet (char *buffer, int pos, FILE* fp) {
+    int* last;
+    int size;
+    size = read_file (buffer + DATA_HEADER_SIZE, pos, fp, last);
+    create_data_header (buffer, pos, size, *last);
     return 1;
 }
 
@@ -73,9 +83,6 @@ int main(int argc, char *argv[]) {
 	int total_acks;
 	total_acks = 0;
 
-	int data_size;
-	data_size = 512;
-
 	int send_base;
 	send_base = 0;
 
@@ -94,13 +101,10 @@ int main(int argc, char *argv[]) {
 	int acks;
 	acks = 0;
 
-
      	for (i = send_base; i < send_base + window_size; i++) {
-	    //TODO
-	    //Write header
-	    //Write data
-	    //memcpy(buf, header+data)
-	    //sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&client_addr, addrlen);
+	    char buffer[DATA_SIZE + DATA_HEADER_SIZE];
+	    create_packet (buffer, i, fp); //Should be position, not the wrap-around i
+	    sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr*)&client_addr, addrlen);
 	    timers[i] = (int)time(NULL) + time_out;
 	}
 
@@ -109,12 +113,10 @@ int main(int argc, char *argv[]) {
 	    //	    int recvlen = recvfrom(sockfd, buf, 512, 0, (struct sockaddr*)&client_addr, &addrlen);
 
 	    for (i = send_base; i < send_base + window_size; i++) {
-		//TODO
-		if (timers[i] < (int)time(NULL) & 1) { //!ack(i)
-		    //Writer header
-		    //write data
-		    //memcpy(buf, header+data)
-		    //sendto(sockfd, buf, strlen(buf),...
+		if (timers[i] < (int)time(NULL) & 1) { //TODO: !ack(i), not 1
+		    char buffer[DATA_SIZE + DATA_HEADER_SIZE];
+		    create_packet (buffer, i, fp);
+		    sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr*)&client_addr, addrlen);
 		    timers[i] = (int)time(NULL) + time_out;
 		    printf("reset timer %d\n", i);
 		}
@@ -124,8 +126,7 @@ int main(int argc, char *argv[]) {
     else {
 	memcpy(buf, "File doesn't exist.", 20);
 	sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&client_addr, addrlen);
-    }
-    
+    }    
 }
 
 char* file_data (int start, int size, FILE* file) {
