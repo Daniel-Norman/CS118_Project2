@@ -131,8 +131,9 @@ int main(int argc, char *argv[]) {
 
         char packet_buffer[PACKET_SIZE];
         
-        
-        while (total_unique_acks < (file_size / DATA_SIZE)) {
+        int unique_acks_required = file_size / DATA_SIZE;
+        if (file_size % DATA_SIZE != 0) unique_acks_required++;
+        while (total_unique_acks != unique_acks_required) {
             char ack[2];
             if(recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen) > 0) {
                 // Retrieve the ACK's seqnum
@@ -172,7 +173,6 @@ int main(int argc, char *argv[]) {
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
                     if (file_pos <= file_size) {
-                        printf("%d\n", file_pos);
                         create_packet(packet_buffer, j, fp, file_pos);
                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
                         timers[j] = (int)time(NULL) + time_out;
