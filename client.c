@@ -74,10 +74,6 @@ int main(int argc, char *argv[]) {
     error_rate = atoi(argv[1]);
     printf("Error rate: %d\n", error_rate);
 
-    // TODO receive window_size from server
-    int window_size = 5;
-    
-    
     int sockfd;
     int i;
     struct sockaddr_in serv_addr;
@@ -93,13 +89,19 @@ int main(int argc, char *argv[]) {
     serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // Server is at local address 127.0.0.1
     serv_addr.sin_port = htons(PORT);
     
-    memcpy(buf, argv[2], 9);
+    memcpy(buf, argv[2], strlen(argv[2]));
+    buf[strlen(argv[2])] = 0;
     printf("Filename: %s\n", argv[2]);
     
     // Send message (give destination on each call, because UDP just sends, doesn't do a TWH to secure a connection)
     if (sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serv_addr, addrlen) < 0) {
         error("Sendto failed");
     }
+
+    int recvlen = recvfrom(sockfd, buf, 10, 0, (struct sockaddr*)&\
+			   serv_addr, &addrlen);
+    int window_size;
+    window_size = atoi(&buf[3]);
     
     // Open (and create) the file we will be writing into
     // TODO use the actual name of the file we're requesting

@@ -100,18 +100,35 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     
+    int recvlen;
     // Receive messages (along with source location, saved in client_addr)
     while (1) {
-        int recvlen = recvfrom(sockfd, buf, 1024, 0, (struct sockaddr*)&client_addr, &addrlen);
+        recvlen = recvfrom(sockfd, buf, 1024, 0, (struct sockaddr*)&client_addr, &addrlen);
         if (recvlen > 0) {
             buf[recvlen] = 0;
             printf("Received message: %s\n", buf);
             break;
         }
     }
-    
-    char filename[10];
-    memcpy(filename, "puppy.jpg", 10); //TODO: Testing
+
+    char ws_msg[10];
+    ws_msg[0] = 'W';
+    ws_msg[1] = 'S';
+    ws_msg[2] = ' ';
+
+    int c;
+    for (c = 0; c < 8; c++) {
+	ws_msg[c + 3] = argv[2][c];
+    }
+
+    sendto(sockfd, ws_msg, 10, 0, (struct sockaddr*)&client_addr, addrlen);
+
+    char filename[100];
+    printf("recvlen %d\n", recvlen);
+    memcpy(filename, buf, recvlen);
+    filename[recvlen] = 0;
+    printf("filename: %s\n", filename);
+
     FILE* fp;
     fp = fopen(filename, "rb");
  
