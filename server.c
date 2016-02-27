@@ -24,10 +24,10 @@ int read_ack_packet(char *buf, int* seqnum) {
     return 1;
 }
 
-int create_packet(char *buffer, int seqnum, int last, FILE* file, int file_pos) {
+int create_packet(char *buffer, int seqnum, FILE* file, int file_pos) {
     int size = 0;
-    int old_last;
-    size = read_file(buffer + DATA_HEADER_SIZE, file, file_pos, &old_last);
+    int last = 0;
+    size = read_file(buffer + DATA_HEADER_SIZE, file, file_pos, &last);
     create_data_header (buffer, seqnum, size, last);
     return 1;
 }
@@ -102,7 +102,7 @@ int main(int argc, char *argv[]) {
     }
     
     char filename[10];
-    memcpy(filename, "server.c", 9); //TODO: Testing
+    memcpy(filename, "test.png", 9); //TODO: Testing
     FILE* fp;
     fp = fopen(filename, "rb");
  
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
         char packet_buffer[PACKET_SIZE];
         
         
-        while (total_unique_acks <= (file_size / DATA_SIZE) + 1) {
+        while (total_unique_acks < (file_size / DATA_SIZE)) {
             char ack[2];
             if(recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen) > 0) {
                 // Retrieve the ACK's seqnum
@@ -156,6 +156,7 @@ int main(int argc, char *argv[]) {
                         update_ack(&acks, j, 0);
                         timers[j] = 0;
                         send_base = (send_base + 1) % NUM_SLOTS;
+                        if (send_base == 0) ++wraparound_count;
                     }
                     else break;
                 }
@@ -171,8 +172,8 @@ int main(int argc, char *argv[]) {
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
                     if (file_pos <= file_size) {
-                        int last = file_pos + DATA_SIZE >= file_size;
-                        create_packet(packet_buffer, j, last, fp, file_pos);
+                        printf("%d\n", file_pos);
+                        create_packet(packet_buffer, j, fp, file_pos);
                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
                         timers[j] = (int)time(NULL) + time_out;
                         //printf("reset timer %d\n", j);
