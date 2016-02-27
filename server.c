@@ -127,35 +127,19 @@ int main(int argc, char *argv[]) {
         // Integer flag of bits of ACKs for the NUM_SPOTS spots
         int acks = 0;
 
-        /*
-         
-         This is unnecessary, as it is handled in the first iteration of the following while loop
-
-         This treats the first sends as being "resends due to timeout", but it works and removes
-         need for duplicate code / special handling of first 5 packets
-         
-         
-        // Send the first window_size-# of packets
-        int i;
-     	for (i = send_base; i < send_base + window_size; i++) {
-            char buffer[DATA_SIZE + DATA_HEADER_SIZE];
-            int file_pos = convert_seqnum_to_file_pos(i, send_base, wraparound_count);
-            //printf("A\n");
-            create_packet(buffer, i, fp, file_pos);
-            //printf("B\n");
-
-            sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr*)&client_addr, addrlen);
-            //printf("C\n");
-            timers[i] = (int)time(NULL) + time_out;
-            //printf("D\n");
-        }*/
-
         char packet_buffer[PACKET_SIZE];
         
         while (total_unique_acks < (file_size / DATA_SIZE)) {
             //TODO handle receive ACKs logic
-            //	    int recvlen = recvfrom(sockfd, buf, 512, 0, (struct sockaddr*)&client_addr, &addrlen);
-            // use update_ack() to set acks
+	    int recvlen = recvfrom(sockfd, buf, 512, 0, (struct sockaddr*)&client_addr, &addrlen);
+	    if(recvlen > 0) {
+		printf("buffer: %s\n",buf);
+	    }
+	    //int* seqnum;
+	    //read_ack_header(buf, seqnum);
+	    //printf("OKAY %d\n", *seqnum);
+	    //	    update_ack(acks, seqnum, 1);
+// use update_ack() to set acks
             // make sure to reset ack to 0 when moving send_base (if send base goes 4 to 5, set ack[4] to 0)
 
             int i;
