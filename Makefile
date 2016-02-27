@@ -3,4 +3,4 @@ all:
 	gcc server.c -o server
 
 clean:
-	$(RM) *\~ client server
+	$(RM) *\~ client server TRANSFERRED_FILE

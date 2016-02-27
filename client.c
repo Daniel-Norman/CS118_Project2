@@ -8,11 +8,11 @@
 #define DATA_HEADER_SIZE 6
 #define DATA_SIZE 512
 #define PACKET_SIZE DATA_HEADER_SIZE+DATA_SIZE
+#define ACK_SIZE 2
 #define NUM_SLOTS 30
-#define WINDOW_SIZE 5
-#define FREE_BUFFER_SEQNUM -1
+#define SEQNUM_UNUSED -1
 
-int create_ack_header(char* buf, int seqnum) {
+int create_ack(char* buf, int seqnum) {
     return sprintf(buf, "%02d", seqnum);
 }
 
@@ -45,15 +45,38 @@ int read_packet(char* input, char* data, int* seqnum, int* size, int* last) {
     return 1;
 }
 
+void error(char* err) {
+    perror(err);
+    exit(1);
+}
+
+int write_to_file(FILE* file, char* data, int size) {
+    return fwrite(data, 1, size, file);
+}
+
+int close_file(FILE* file) {
+    if (fclose(file) == 0) {
+        printf("File successfully transferred!");
+        exit(0);
+    }
+    else {
+        error("Error closing file");
+    }
+}
+
 int main(int argc, char *argv[]) {
+    // TODO receive window_size from server
+    int window_size = 5;
+    
+    
     int sockfd;
+    int i;
     struct sockaddr_in serv_addr;
     socklen_t addrlen = sizeof(serv_addr);
-    char buf[1024];
+    char buf[PACKET_SIZE];
     
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        perror("Cannot create socket");
-        exit(1);
+        error("Cannot create socket");
     }
     
     memset((char*)&serv_addr, 0, sizeof(serv_addr));
@@ -64,58 +87,95 @@ int main(int argc, char *argv[]) {
     // TODO get this from program argument
     memcpy(buf, "server.c", 9);
     
-    // Send messages (give destination on each call, because UDP just sends, doesn't do a TWH to secure a connection)
+    // Send message (give destination on each call, because UDP just sends, doesn't do a TWH to secure a connection)
     if (sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serv_addr, addrlen) < 0) {
-        perror("Sendto failed");
-        exit(1);
-    } else printf("Sendto succeeded\n");
+        error("Sendto failed");
+    }
     
+    // Open (and create) the file we will be writing into
+    // TODO use the actual name of the file we're requesting
+    FILE* fp = fopen("TRANSFERRED_FILE", "wb");
     
     // The current in-order packet's seqnum we expect to receive
     int rcvbase = 0;
     
+    // The seqnum for the last packet of the file.
+    // This gets set when client receives a packet with last=true in the header
+    int last_seqnum = SEQNUM_UNUSED;
+    
     // Buffers for storing out-of-order packets, along with an array
     //  to keep track of which seqnum each buffer corresponds to
-    int seqnums_for_ooo_buffers[WINDOW_SIZE];
-    memset(seqnums_for_ooo_buffers, FREE_BUFFER_SEQNUM, WINDOW_SIZE * sizeof(int));
-    char ooo_buffers[WINDOW_SIZE][DATA_SIZE];
+    int* seqnums_for_ooo_buffers = (int*) malloc(sizeof(int) * window_size);
+    if (seqnums_for_ooo_buffers == 0) error("Memory alloc failed");
+    for (i = 0; i < window_size; ++i) seqnums_for_ooo_buffers[i] = SEQNUM_UNUSED;
+    char** ooo_buffers = (char**) malloc(sizeof(char*) * window_size);
+    if (ooo_buffers == 0) error("Memory alloc failed");
+    for (i = 0; i < window_size; ++i) {
+        ooo_buffers[i] = (char*) malloc(sizeof(char) * DATA_SIZE);
+        if (ooo_buffers[i] == 0) error("Memory alloc failed");
+    }
     
-    // Variables to hold info for the current receieved packet
+    // Variables to store info for the current receieved packet
     char data[DATA_SIZE];
     int seqnum, size, last;
     
-    // TODO use 'last' variable to break out of this when we've written last packet to file
+    // Continually receieve packets.
+    // When we realize we've written the last packet, the program exits
     while (1) {
-        int recvlen = recvfrom(sockfd, buf, 1024, 0, (struct sockaddr*)&serv_addr, &addrlen);
+        int recvlen = recvfrom(sockfd, buf, PACKET_SIZE, 0, (struct sockaddr*)&serv_addr, &addrlen);
         if (recvlen > 0) {
             // Parse the received packet into it header variables and data
             read_packet(buf, data, &seqnum, &size, &last);
             
+            // Create and send an ACK back to the server
+            char ack[ACK_SIZE];
+            create_ack(ack, seqnum);
+            if (sendto(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&serv_addr, addrlen) < 0) {
+                error("Sendto failed");
+            }
+            else {
+                printf("Sent ACK: %c%c\n", ack[0], ack[1]);
+            }
+            
+            // If we're told this is the last packet, set last_seqnum accordingly
+            if (last) {
+                last_seqnum = seqnum;
+            }
+            
             // Put the in-order data into the file, and then check buffers to see if next
             //  in-order data has already been receieved
             if (seqnum == rcvbase) {
-                // TODO Write to file (printing right now)
-                data[DATA_SIZE] = 0;
-                printf("%s", data);
+                // Write to file
+                if (write_to_file(fp, data, size) != size) error("Error writing to file");
+                
+                // If this is the last packet, we're done! Close the file
+                if (rcvbase == last_seqnum) {
+                    close_file(fp);
+                }
                 
                 // Check data in the out-of-order buffers, writing to file as necessary
-                int found_next = 0;
+                int found_next;
                 do {
+                    found_next = 0;
+                    
                     // Increase rcvbase to move to accepting the next seqnum
                     rcvbase = (rcvbase + 1) % NUM_SLOTS;
 
                     // Loop through our buffers' seqnums, seeing if one matches the next
                     //  seqnum that we expect
-                    int i;
-                    for (i = 0; i < WINDOW_SIZE; ++i) {
+                    for (i = 0; i < window_size; ++i) {
                         if (seqnums_for_ooo_buffers[i] == rcvbase) {
-                            // TODO Write buffer i to file (printing right now)
-                            ooo_buffers[i][DATA_SIZE] = 0;
-                            printf("%s", ooo_buffers[i]);
+                            // Write buffer i to file
+                            if (write_to_file(fp, ooo_buffers[i], DATA_SIZE) != DATA_SIZE) error("Error writing to file");
                             
+                            // If we just wrote the last packet, we're done! Close the file
+                            if (rcvbase == last_seqnum) {
+                                close_file(fp);
+                            }
+
                             // Save the fact that we used this buffer, by setting it's seqnum to free
                             //  (thus enabling a future packet to use it)
-                            seqnums_for_ooo_buffers[i] = FREE_BUFFER_SEQNUM;
+                            seqnums_for_ooo_buffers[i] = SEQNUM_UNUSED;
                             found_next = 1;
                             break;
                         }
@@ -128,8 +188,7 @@ int main(int argc, char *argv[]) {
                 int already_in_buffer = 0;
                 int free_buffer_index = -1;
                 
-                int i;
-                for (i = 0; i < WINDOW_SIZE; ++i) {
+                for (i = 0; i < window_size; ++i) {
                     // If this packet is already in the buffers, don't do anything
                     if (seqnums_for_ooo_buffers[i] == seqnum) {
                         already_in_buffer = 1;
@@ -137,17 +196,17 @@ int main(int argc, char *argv[]) {
                     }
                     
                     // If we find a free buffer slot, use it
-                    if (seqnums_for_ooo_buffers[i] == FREE_BUFFER_SEQNUM) {
+                    if (seqnums_for_ooo_buffers[i] == SEQNUM_UNUSED) {
                         free_buffer_index = i;
                     }
                 }
                 
-                // Only save to buffer if not already in a buffer, and we have a free slot
+                // Only save to buffer if not already in a buffer and if we have a free slot.
                 // If no free slot, this packet is lost (which may happen if server resends
                 //  too many packets) but that is OK
                 if (!already_in_buffer && free_buffer_index != -1) {
                     seqnums_for_ooo_buffers[free_buffer_index] = seqnum;
-                    memcpy(ooo_buffers[free_buffer_index], data, DATA_SIZE);
+                    memcpy(ooo_buffers[free_buffer_index], data, size);
                 }
             }
         }
