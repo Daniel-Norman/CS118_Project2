@@ -65,6 +65,15 @@ int close_file(FILE* file) {
 }
 
 int main(int argc, char *argv[]) {
+    if (argc < 3) {
+	printf("Error: not all fields provided. error rate, filename");
+	exit(1);
+    }
+    
+    int error_rate;
+    error_rate = atoi(argv[1]);
+    printf("Error rate: %d\n", error_rate);
+
     // TODO receive window_size from server
     int window_size = 5;
     
@@ -84,8 +93,8 @@ int main(int argc, char *argv[]) {
     serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // Server is at local address 127.0.0.1
     serv_addr.sin_port = htons(PORT);
     
-    // TODO get this from program argument
-    memcpy(buf, "server.c", 9);
+    memcpy(buf, argv[2], 9);
+    printf("Filename: %s\n", argv[2]);
     
     // Send message (give destination on each call, because UDP just sends, doesn't do a TWH to secure a connection)
     if (sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serv_addr, addrlen) < 0) {
