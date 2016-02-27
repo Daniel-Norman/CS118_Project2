@@ -9,7 +9,9 @@
 #define DATA_HEADER_SIZE 6
 #define DATA_SIZE 512
 #define PACKET_SIZE DATA_HEADER_SIZE+DATA_SIZE
+#define ACK_SIZE 2
 #define NUM_SLOTS 30
+#define SEQNUM_UNUSED -1
 
 int create_data_header(char *buf, int seqnum, int size, int last) {
     char header[DATA_HEADER_SIZE];
@@ -17,7 +19,7 @@ int create_data_header(char *buf, int seqnum, int size, int last) {
     memcpy(buf, header, DATA_HEADER_SIZE);
 }
 
-int read_ack_header(char *buf, int* seqnum) {
+int read_ack_packet(char *buf, int* seqnum) {
     *seqnum = atoi(buf);
     return 1;
 }
@@ -67,11 +69,12 @@ int check_ack(int acks, int index) {
 
 int main(int argc, char *argv[]) {
     int sockfd;
+    int i;
     struct sockaddr_in serv_addr, client_addr;
     socklen_t addrlen = sizeof(client_addr);
     char buf[1024];
     
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)) < 0) {
         perror("Cannot create socket");
         exit(1);
     }
@@ -108,7 +111,7 @@ int main(int argc, char *argv[]) {
         stat(filename, &st);
         unsigned int file_size;
         file_size = st.st_size;
-        sprintf(buf, "File size: %u\n", file_size);
+        printf("File size: %u\n", file_size);
 
         int total_unique_acks = 0;
 
@@ -118,31 +121,45 @@ int main(int argc, char *argv[]) {
         
         int wraparound_count = 0; // Increment whenever send_base gets wrapped back to 0
         
-        int timers[NUM_SLOTS] = {(int)time(NULL)};
+        int timers[NUM_SLOTS] = {0}; // Start at 0 so the first window_size packets are sent immediately
 
+        int time_out = 5; //TODO: to be passed in - will need to change if TA wants smaller time interval
         
-        int time_out;
-        time_out = 5; //TODO: to be passed in - will need to change if TA wants smaller time interval
-        
-        // Integer flag of bits of ACKs for the NUM_SPOTS spots
+        // Integer flag of bits of ACKs for the NUM_SLOTS spots
         int acks = 0;
 
         char packet_buffer[PACKET_SIZE];
         
+        
         while (total_unique_acks < (file_size / DATA_SIZE)) {
-            //TODO handle receive ACKs logic
-	    int recvlen = recvfrom(sockfd, buf, 512, 0, (struct sockaddr*)&client_addr, &addrlen);
-	    if(recvlen > 0) {
-		printf("buffer: %s\n",buf);
-	    }
-	    //int* seqnum;
-	    //read_ack_header(buf, seqnum);
-	    //printf("OKAY %d\n", *seqnum);
-	    //	    update_ack(acks, seqnum, 1);
-// use update_ack() to set acks
-            // make sure to reset ack to 0 when moving send_base (if send base goes 4 to 5, set ack[4] to 0)
+            char ack[2];
+            if(recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen) > 0) {
+                // Retrieve the ACK's seqnum
+                int seqnum;
+                read_ack_packet(ack, &seqnum);
+                printf("Got ACK %d\n", seqnum);
+                
+                // Increase total_unique_acks if this was the first ACK for this slot
+                if (!check_ack(acks, seqnum)) {
+                    ++total_unique_acks;
+                }
+                
+                // Set ACK as true in the acks bitflags
+                update_ack(&acks, seqnum, 1);
+                
+                // Increment send_base as long as check_ack(acks, send_base) is true
+                int limit = send_base + window_size;
+                for (i = send_base; i < limit; ++i) {
+                    int j = i % NUM_SLOTS;
+                    if (check_ack(acks, j)) {
+                        update_ack(&acks, j, 0);
+                        send_base = (send_base + 1) % NUM_SLOTS;
+                    }
+                    else break;
+                }
+            }
 
-            int i;
+
             for (i = send_base; i < send_base + window_size; i++) {
                 // Keep index in range 0-NUM_SLOTS
                 int j = i % NUM_SLOTS;

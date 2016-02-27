@@ -56,7 +56,7 @@ int write_to_file(FILE* file, char* data, int size) {
 
 int close_file(FILE* file) {
     if (fclose(file) == 0) {
-        printf("File successfully transferred!");
+        printf("File successfully transferred!\n");
         exit(0);
     }
     else {
