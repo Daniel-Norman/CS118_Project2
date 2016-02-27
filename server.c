@@ -112,14 +112,7 @@ int main(int argc, char *argv[]) {
     }
 
     char ws_msg[10];
-    ws_msg[0] = 'W';
-    ws_msg[1] = 'S';
-    ws_msg[2] = ' ';
-
-    int c;
-    for (c = 0; c < 8; c++) {
-	ws_msg[c + 3] = argv[2][c];
-    }
+    memcpy(ws_msg, argv[2], strlen(argv[2]));
 
     sendto(sockfd, ws_msg, 10, 0, (struct sockaddr*)&client_addr, addrlen);
 

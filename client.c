@@ -72,7 +72,6 @@ int main(int argc, char *argv[]) {
     
     int error_rate;
     error_rate = atoi(argv[1]);
-    printf("Error rate: %d\n", error_rate);
 
     int sockfd;
     int i;
@@ -101,7 +100,7 @@ int main(int argc, char *argv[]) {
     int recvlen = recvfrom(sockfd, buf, 10, 0, (struct sockaddr*)&\
 			   serv_addr, &addrlen);
     int window_size;
-    window_size = atoi(&buf[3]);
+    window_size = atoi(&buf[0]);
     
     // Open (and create) the file we will be writing into
     // TODO use the actual name of the file we're requesting
@@ -134,7 +133,7 @@ int main(int argc, char *argv[]) {
     // When we realize we've written the last packet, the program exits
     while (1) {
         int recvlen = recvfrom(sockfd, buf, PACKET_SIZE, 0, (struct sockaddr*)&serv_addr, &addrlen);
-        if (recvlen > 0) {
+        if (recvlen > 0 & (rand() % 100 > error_rate)) {
             // Parse the received packet into it header variables and data
             read_packet(buf, data, &seqnum, &size, &last);
             
