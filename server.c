@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
     }
     
     char filename[10];
-    memcpy(filename, "server.c", 10); //TODO: Testing
+    memcpy(filename, "puppy.jpg", 10); //TODO: Testing
     FILE* fp;
     fp = fopen(filename, "rb");
  
@@ -140,8 +140,8 @@ int main(int argc, char *argv[]) {
 
         char packet_buffer[PACKET_SIZE];
         
-	int unique_acks_required = file_size / DATA_SIZE;
-	if (file_size % DATA_SIZE != 0) unique_acks_required++;
+        int unique_acks_required = file_size / DATA_SIZE;
+        if (file_size % DATA_SIZE != 0) unique_acks_required++;
         while (total_unique_acks != unique_acks_required) {
             char ack[2];
             if(recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen) > 0) {
@@ -182,10 +182,8 @@ int main(int argc, char *argv[]) {
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
                     if (file_pos <= file_size) {
-                        printf("%d\n", file_pos);
                         create_packet(packet_buffer, j, fp, file_pos);
                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
-			printf("Send packet %d\n", j);
                         timers[j] = (int)time(NULL) + time_out;
                         //printf("reset timer %d\n", j);
                     }
@@ -195,7 +193,7 @@ int main(int argc, char *argv[]) {
     }
     else {
         memcpy(buf, "File doesn't exist.", 20);
-	printf("file doesn't exist!!");
+        printf("file doesn't exist!!");
         sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&client_addr, addrlen);
     }
 }
