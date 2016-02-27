@@ -24,10 +24,10 @@ int read_ack_packet(char *buf, int* seqnum) {
     return 1;
 }
 
-int create_packet(char *buffer, int seqnum, FILE* file, int file_pos) {
-    int last = 0;
+int create_packet(char *buffer, int seqnum, int last, FILE* file, int file_pos) {
     int size = 0;
-    size = read_file(buffer + DATA_HEADER_SIZE, file, file_pos, &last);
+    int old_last;
+    size = read_file(buffer + DATA_HEADER_SIZE, file, file_pos, &old_last);
     create_data_header (buffer, seqnum, size, last);
     return 1;
 }
@@ -37,6 +37,7 @@ int read_file(char* data, FILE* file, int start_pos, int* last) {
     fseek(file, sizeof(char) * start_pos, SEEK_SET);
     if ((read = fread(data, 1, DATA_SIZE, file)) == 0) error("Error reading file");
     *last = feof(file);
+    if (*last) printf("Sending last packet\n");
     return read;
 }
 
@@ -131,13 +132,13 @@ int main(int argc, char *argv[]) {
         char packet_buffer[PACKET_SIZE];
         
         
-        while (total_unique_acks < (file_size / DATA_SIZE)) {
+        while (total_unique_acks <= (file_size / DATA_SIZE) + 1) {
             char ack[2];
             if(recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen) > 0) {
                 // Retrieve the ACK's seqnum
                 int seqnum;
                 read_ack_packet(ack, &seqnum);
-                printf("Got ACK %d\n", seqnum);
+                //printf("Got ACK %d\n", seqnum);
                 
                 // Increase total_unique_acks if this was the first ACK for this slot
                 if (!check_ack(acks, seqnum)) {
@@ -153,6 +154,7 @@ int main(int argc, char *argv[]) {
                     int j = i % NUM_SLOTS;
                     if (check_ack(acks, j)) {
                         update_ack(&acks, j, 0);
+                        timers[j] = 0;
                         send_base = (send_base + 1) % NUM_SLOTS;
                     }
                     else break;
@@ -169,10 +171,11 @@ int main(int argc, char *argv[]) {
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
                     if (file_pos <= file_size) {
-                        create_packet(packet_buffer, j, fp, file_pos);
+                        int last = file_pos + DATA_SIZE >= file_size;
+                        create_packet(packet_buffer, j, last, fp, file_pos);
                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
                         timers[j] = (int)time(NULL) + time_out;
-                        printf("reset timer %d\n", j);
+                        //printf("reset timer %d\n", j);
                     }
                 }
             }
