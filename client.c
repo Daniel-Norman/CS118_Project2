@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
                         if (seqnums_for_ooo_buffers[i] == rcvbase) {
                             // Write buffer i to file
                             if (write_to_file(fp, ooo_buffers[i], DATA_SIZE) != DATA_SIZE) error("Error writing to file");
-                            
+
                             // If we just wrote the last packet, we're done! Close the file
                             if (rcvbase == last_seqnum) {
                                 close_file(fp);
@@ -183,8 +183,8 @@ int main(int argc, char *argv[]) {
                 } while (found_next);
             }
             
-            // Put the out-of-order data in a buffer
-            if (seqnum != rcvbase) {
+            // If we've received a packet from the future, put the out-of-order data in a buffer
+            else if (seqnum > rcvbase || (rcvbase - seqnum > NUM_SLOTS - window_size)) {
                 int already_in_buffer = 0;
                 int free_buffer_index = -1;
                 
