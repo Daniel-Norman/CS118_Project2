@@ -133,7 +133,10 @@ int main(int argc, char *argv[]) {
     // When we realize we've written the last packet, the program exits
     while (1) {
         int recvlen = recvfrom(sockfd, buf, PACKET_SIZE, 0, (struct sockaddr*)&serv_addr, &addrlen);
-        if (recvlen > 0 & (rand() % 100 > error_rate)) {
+	int randnum;
+	randnum = rand() % 100;
+	if (randnum <= error_rate) printf("Packet is lost\n");
+        if (recvlen > 0 & (randnum > error_rate)) {
             // Parse the received packet into it header variables and data
             read_packet(buf, data, &seqnum, &size, &last);
             
