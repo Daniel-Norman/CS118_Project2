@@ -156,12 +156,14 @@ int main(int argc, char *argv[]) {
         
         int unique_acks_required = file_size / DATA_SIZE;
         if (file_size % DATA_SIZE != 0) unique_acks_required++;
+
+	int rand;
+	rand = srand(time(NULL));
+
         while (total_unique_acks != unique_acks_required) {
             char ack[2];
 
 	    int recvlen = recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen);
-
-	    int randnum;
 
 	    if(recvlen > 0) {
 		randnum = rand() % 100;
