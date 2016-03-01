@@ -155,6 +155,11 @@ int main(int argc, char *argv[]) {
         int rand_loss, rand_corruption;
         srand(time(NULL));
 
+	int last_packet;
+	last_packet = -1;
+	int retries;
+	retries = 0;
+
         while (total_unique_acks != unique_acks_required) {
             char ack[2];
 
@@ -168,10 +173,10 @@ int main(int argc, char *argv[]) {
                 else if (rand_corruption < corruption_rate) printf("ACK is corrupted. Resending un-ACKed packets.\n");
                 else {
                     // Check if this is an "I'm confirming that I'm done!" message from the client
-                    if (ack[0] == 'd') {
-                        printf("Confirmed done.\n");
-                        exit(0);
-                    }
+                    //if (ack[0] == 'd') {
+		    //printf("Confirmed done.\n");
+		    //  exit(0);
+                    //}
                     
                     // Retrieve the ACK's seqnum
                     int seqnum;
@@ -209,13 +214,27 @@ int main(int argc, char *argv[]) {
                     int file_pos = convert_seqnum_to_file_pos(j, send_base, wraparound_count);
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
-                    if (file_pos <= file_size) {
-                        if (timers[j] == 0) printf("Sending DATA packet. Seqnum = %d\n", j);
-                        else printf("Resending DATA packet from timeout. Seqnum = %d\n", j);
-                        create_packet(packet_buffer, j, fp, file_pos);
-                        sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
+                    if (file_pos <= file_size) {// && ((last_packet != file_pos) || (last_packet = file_pos && retries < 5))) {
+                        //if ((feof(fp) && retries < 5) || !feof(fp)) {
+			    if (timers[j] == 0) printf("Sending DATA packet. Seqnum = %d\n", j);
+			    else printf("Resending DATA packet from timeout. Seqnum = %d\n", j);
+			    create_packet(packet_buffer, j, fp, file_pos);
+		        if(feof(fp)) {
+			    //last_packet = file_pos;
+			    retries++;
+			    printf("incr retries\n");
+			}
+			
+			
+                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
+			 //}
+
                         timers[j] = (int)time(NULL) + time_out;
                     }
+		    if (retries >= 5) { // TODO: Remove for testing
+			total_unique_acks++;
+			printf("last ack lost, 5 retries done");
+		    }
                 }
             }
         }

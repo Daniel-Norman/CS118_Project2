@@ -56,6 +56,7 @@ int write_to_file(FILE* file, char* data, int size) {
 int close_file(FILE* file) {
     if (fclose(file) == 0) {
         printf("File successfully transferred!\n");
+	exit(1);
     }
     else {
         error("Error closing file");
@@ -189,11 +190,11 @@ int main(int argc, char *argv[]) {
                     // Write to file
                     if (write_to_file(fp, data, size) != size) error("Error writing to file");
                     
-                    // If this is the last packet, we're done! Close the file
-                    if (rcvbase == last_seqnum) {
-                        close_file(fp);
-                        send_done(sockfd, (struct sockaddr*)&serv_addr, addrlen);
-                    }
+		     if (rcvbase == last_seqnum) {
+			 close_file(fp);
+			 //			 exit(1);
+			//  send_done(sockfd, (struct sockaddr*)&serv_addr, addrlen);
+			}
                     
                     // Check data in the out-of-order buffers, writing to file as necessary
                     int found_next;
