@@ -5,13 +5,17 @@
 #include <string.h> // for memset
 #include <sys/stat.h>
 
-#define PORT 5555
 #define DATA_HEADER_SIZE 6
 #define DATA_SIZE 512
-#define PACKET_SIZE DATA_HEADER_SIZE+DATA_SIZE
+#define PACKET_SIZE (DATA_HEADER_SIZE+DATA_SIZE)
 #define ACK_SIZE 2
 #define NUM_SLOTS 30
 #define SEQNUM_UNUSED -1
+
+void error(char* err) {
+    perror(err);
+    exit(1);
+}
 
 int create_data_header(char *buf, int seqnum, int size, int last) {
     char header[DATA_HEADER_SIZE];
@@ -37,7 +41,6 @@ int read_file(char* data, FILE* file, int start_pos, int* last) {
     fseek(file, sizeof(char) * start_pos, SEEK_SET);
     if ((read = fread(data, 1, DATA_SIZE, file)) == 0) error("Error reading file");
     *last = feof(file);
-    if (*last) printf("Sending last packet\n");
     return read;
 }
 
@@ -67,20 +70,18 @@ int check_ack(int acks, int index) {
     return (acks >> index) & 1;
 }
 
-
 int main(int argc, char *argv[]) {
-    if (argc < 4) {
-	printf("Error: not all fields provided. error rate, corruption, windowsize");
-	exit(1);
+    if (argc < 5) {
+        error("Error: not all fields provided: Port Number, Window Size (Bytes), Probability Loss, Probability Corruption");
     }
 
-    int error_rate;
-    error_rate = atoi(argv[1]);
-    printf("Error rate %d\n", error_rate);
-
-    int corruption;
-    corruption = atoi(argv[2]);
-    printf("Corruption rate %d\n", corruption);
+    int port = atoi(argv[1]);
+    int window_size = atoi(argv[2]) / PACKET_SIZE;
+    // Keep window size below slot numbers / 2, for selective-repeat effectivity
+    if (window_size >= NUM_SLOTS / 2) window_size = NUM_SLOTS / 2 - 1;
+    printf("Window size %d\n", window_size);
+    int loss_rate = atoi(argv[3]);
+    int corruption_rate = atoi(argv[4]);
 
     int sockfd;
     int i;
@@ -89,19 +90,17 @@ int main(int argc, char *argv[]) {
     char buf[1024];
     
     if ((sockfd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)) < 0) {
-        perror("Cannot create socket");
-        exit(1);
+        error("Cannot create socket");
     }
     
     memset((char*)&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // Listen on our local address 127.0.0.1
-    serv_addr.sin_port = htons(PORT);
+    serv_addr.sin_port = htons(port);
     
     // Bind server to this socket
     if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Bind failed");
-        exit(1);
+        error("Bind failed");
     }
     
     int recvlen;
@@ -115,16 +114,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Send window_size to client
     char ws_msg[10];
     memcpy(ws_msg, argv[2], strlen(argv[2]));
-
     sendto(sockfd, ws_msg, 10, 0, (struct sockaddr*)&client_addr, addrlen);
 
     char filename[100];
-    printf("recvlen %d\n", recvlen);
     memcpy(filename, buf, recvlen);
     filename[recvlen] = 0;
-    printf("filename: %s\n", filename);
 
     FILE* fp;
     fp = fopen(filename, "rb");
@@ -141,13 +138,11 @@ int main(int argc, char *argv[]) {
 
         int send_base = 0;
         
-        int window_size = atoi(argv[3]); 
-        
         int wraparound_count = 0; // Increment whenever send_base gets wrapped back to 0
         
         int timers[NUM_SLOTS] = {0}; // Start at 0 so the first window_size packets are sent immediately
 
-        int time_out = 5;
+        int time_out = 1;
         
         // Integer flag of bits of ACKs for the NUM_SLOTS spots
         int acks = 0;
@@ -157,48 +152,55 @@ int main(int argc, char *argv[]) {
         int unique_acks_required = file_size / DATA_SIZE;
         if (file_size % DATA_SIZE != 0) unique_acks_required++;
 
-	int rand;
-	rand = srand(time(NULL));
+        int rand_loss, rand_corruption;
+        srand(time(NULL));
 
         while (total_unique_acks != unique_acks_required) {
             char ack[2];
 
-	    int recvlen = recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen);
+            int recvlen = recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen);
 
-	    if(recvlen > 0) {
-		randnum = rand() % 100;
-		if (randnum <= error_rate) printf("ACK is lost\n");
-		printf("randnum %d\n", randnum);
-	    }
-            if((recvlen > 0) & (randnum > error_rate)) {
-                // Retrieve the ACK's seqnum
-                int seqnum;
-                read_ack_packet(ack, &seqnum);
-                //printf("Got ACK %d\n", seqnum);
+            if (recvlen > 0) {
+                rand_loss = rand() % 100;
+                rand_corruption = rand() % 100;
                 
-                // Increase total_unique_acks if this was the first ACK for this slot
-                if (!check_ack(acks, seqnum)) {
-                    ++total_unique_acks;
-                }
-                
-                // Set ACK as true in the acks bitflags
-                update_ack(&acks, seqnum, 1);
-                
-                // Increment send_base as long as check_ack(acks, send_base) is true
-                int limit = send_base + window_size;
-                for (i = send_base; i < limit; ++i) {
-                    int j = i % NUM_SLOTS;
-                    if (check_ack(acks, j)) {
-                        update_ack(&acks, j, 0);
-                        timers[j] = 0;
-                        send_base = (send_base + 1) % NUM_SLOTS;
-                        if (send_base == 0) ++wraparound_count;
+                if (rand_loss < loss_rate) printf("ACK is lost.\n");
+                else if (rand_corruption < corruption_rate) printf("ACK is corrupted. Resending un-ACKed packets.\n");
+                else {
+                    // Check if this is an "I'm confirming that I'm done!" message from the client
+                    if (ack[0] == 'd') {
+                        printf("Confirmed done.\n");
+                        exit(0);
                     }
-                    else break;
+                    
+                    // Retrieve the ACK's seqnum
+                    int seqnum;
+                    read_ack_packet(ack, &seqnum);
+                    //printf("Got ACK %d\n", seqnum);
+                    
+                    // Increase total_unique_acks if this was the first ACK for this slot
+                    if (!check_ack(acks, seqnum)) {
+                        ++total_unique_acks;
+                    }
+                    
+                    // Set ACK as true in the acks bitflags
+                    update_ack(&acks, seqnum, 1);
+                    
+                    // Increment send_base as long as check_ack(acks, send_base) is true
+                    int limit = send_base + window_size;
+                    for (i = send_base; i < limit; ++i) {
+                        int j = i % NUM_SLOTS;
+                        if (check_ack(acks, j)) {
+                            update_ack(&acks, j, 0);
+                            timers[j] = 0;
+                            send_base = (send_base + 1) % NUM_SLOTS;
+                            if (send_base == 0) ++wraparound_count;
+                        }
+                        else break;
+                    }
                 }
             }
-
-
+            
             for (i = send_base; i < send_base + window_size; i++) {
                 // Keep index in range 0-NUM_SLOTS
                 int j = i % NUM_SLOTS;
@@ -208,10 +210,11 @@ int main(int argc, char *argv[]) {
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
                     if (file_pos <= file_size) {
+                        if (timers[j] == 0) printf("Sending DATA packet. Seqnum = %d\n", j);
+                        else printf("Resending DATA packet from timeout. Seqnum = %d\n", j);
                         create_packet(packet_buffer, j, fp, file_pos);
                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
                         timers[j] = (int)time(NULL) + time_out;
-                        //printf("reset timer %d\n", j);
                     }
                 }
             }
