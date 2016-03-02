@@ -3,7 +3,8 @@
 #include <stdio.h> //for print
 #include <stdlib.h> // for exit
 #include <string.h> // for memset
-#include <sys/stat.h>
+#include <sys/stat.h> // for filesize
+#include <time.h>
 
 #define DATA_HEADER_SIZE 6
 #define DATA_SIZE 512
@@ -11,6 +12,8 @@
 #define ACK_SIZE 2
 #define NUM_SLOTS 30
 #define SEQNUM_UNUSED -1
+#define TIMEOUT_MS 100
+#define GIVEUP_MS 2000
 
 void error(char* err) {
     perror(err);
@@ -70,6 +73,12 @@ int check_ack(int acks, int index) {
     return (acks >> index) & 1;
 }
 
+long current_time_ms() {
+    struct timespec spec;
+    clock_gettime(CLOCK_REALTIME, &spec);
+    return spec.tv_sec * 1000 + spec.tv_nsec / 1.e6;
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 5) {
         error("Error: not all fields provided: Port Number, Window Size (Bytes), Probability Loss, Probability Corruption");
@@ -116,7 +125,7 @@ int main(int argc, char *argv[]) {
 
     // Send window_size to client
     char ws_msg[10];
-    memcpy(ws_msg, argv[2], strlen(argv[2]));
+    sprintf(ws_msg, "%d", window_size);
     sendto(sockfd, ws_msg, 10, 0, (struct sockaddr*)&client_addr, addrlen);
 
     char filename[100];
@@ -140,9 +149,8 @@ int main(int argc, char *argv[]) {
         
         int wraparound_count = 0; // Increment whenever send_base gets wrapped back to 0
         
-        int timers[NUM_SLOTS] = {0}; // Start at 0 so the first window_size packets are sent immediately
-
-        int time_out = 1;
+        long timers[NUM_SLOTS] = {0}; // Start at 0 so the first window_size packets are sent immediately
+        long last_received_ACK_time = current_time_ms();
         
         // Integer flag of bits of ACKs for the NUM_SLOTS spots
         int acks = 0;
@@ -155,14 +163,13 @@ int main(int argc, char *argv[]) {
         int rand_loss, rand_corruption;
         srand(time(NULL));
 
-	int last_packet;
-	last_packet = -1;
-	int retries;
-	retries = 0;
-
         while (total_unique_acks != unique_acks_required) {
+            if (current_time_ms() - last_received_ACK_time > GIVEUP_MS) {
+                printf("Haven't received an ACK in %dms. Assuming client shut down.\nExiting!\n", GIVEUP_MS);
+                exit(1);
+            }
+            
             char ack[2];
-
             int recvlen = recvfrom(sockfd, ack, ACK_SIZE, 0, (struct sockaddr*)&client_addr, &addrlen);
 
             if (recvlen > 0) {
@@ -172,11 +179,7 @@ int main(int argc, char *argv[]) {
                 if (rand_loss < loss_rate) printf("ACK is lost.\n");
                 else if (rand_corruption < corruption_rate) printf("ACK is corrupted. Resending un-ACKed packets.\n");
                 else {
-                    // Check if this is an "I'm confirming that I'm done!" message from the client
-                    //if (ack[0] == 'd') {
-		    //printf("Confirmed done.\n");
-		    //  exit(0);
-                    //}
+                    last_received_ACK_time = current_time_ms();
                     
                     // Retrieve the ACK's seqnum
                     int seqnum;
@@ -210,31 +213,17 @@ int main(int argc, char *argv[]) {
                 // Keep index in range 0-NUM_SLOTS
                 int j = i % NUM_SLOTS;
                 
-                if (timers[j] < (int)time(NULL) && !check_ack(acks, j)) {
+                if (timers[j] < current_time_ms() && !check_ack(acks, j)) {
                     int file_pos = convert_seqnum_to_file_pos(j, send_base, wraparound_count);
                     
                     // Only send if this seqnum's fileposition doesn't correspond to outside our file
-                    if (file_pos <= file_size) {// && ((last_packet != file_pos) || (last_packet = file_pos && retries < 5))) {
-                        //if ((feof(fp) && retries < 5) || !feof(fp)) {
-			    if (timers[j] == 0) printf("Sending DATA packet. Seqnum = %d\n", j);
-			    else printf("Resending DATA packet from timeout. Seqnum = %d\n", j);
-			    create_packet(packet_buffer, j, fp, file_pos);
-		        if(feof(fp)) {
-			    //last_packet = file_pos;
-			    retries++;
-			    printf("incr retries\n");
-			}
-			
-			
-                         sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
-			 //}
-
-                        timers[j] = (int)time(NULL) + time_out;
+                    if (file_pos <= file_size) {
+                        if (timers[j] == 0) printf("Sending DATA packet. Seqnum = %d\n", j);
+                        else printf("Resending DATA packet from timeout. Seqnum = %d\n", j);
+                        create_packet(packet_buffer, j, fp, file_pos);
+                        sendto(sockfd, packet_buffer, PACKET_SIZE, 0, (struct sockaddr*)&client_addr, addrlen);
+                        timers[j] = current_time_ms() + TIMEOUT_MS;
                     }
-		    if (retries >= 5) { // TODO: Remove for testing
-			total_unique_acks++;
-			printf("last ack lost, 5 retries done");
-		    }
                 }
             }
         }
