@@ -123,6 +123,8 @@ int main(int argc, char *argv[]) {
     int* seqnums_for_ooo_buffers = (int*) malloc(sizeof(int) * window_size);
     if (seqnums_for_ooo_buffers == 0) error("Memory alloc failed");
     for (i = 0; i < window_size; ++i) seqnums_for_ooo_buffers[i] = SEQNUM_UNUSED;
+    int* sizes_for_ooo_buffers = (int*) malloc(sizeof(int) * window_size);
+    if (sizes_for_ooo_buffers == 0) error("Memory alloc failed");
     char** ooo_buffers = (char**) malloc(sizeof(char*) * window_size);
     if (ooo_buffers == 0) error("Memory alloc failed");
     for (i = 0; i < window_size; ++i) {
@@ -164,7 +166,7 @@ int main(int argc, char *argv[]) {
                     error("Sendto failed");
                 }
                 else {
-                    printf("Sent ACK: %c%c\n", ack[0], ack[1]);
+                    //printf("Sent ACK: %c%c\n", ack[0], ack[1]);
                 }
                 
                 // If we're told this is the last packet, set last_seqnum accordingly
@@ -196,7 +198,7 @@ int main(int argc, char *argv[]) {
                         for (i = 0; i < window_size; ++i) {
                             if (seqnums_for_ooo_buffers[i] == rcvbase) {
                                 // Write buffer i to file
-                                if (write_to_file(fp, ooo_buffers[i], DATA_SIZE) != DATA_SIZE) error("Error writing to file");
+                                if (write_to_file(fp, ooo_buffers[i], sizes_for_ooo_buffers[i]) != sizes_for_ooo_buffers[i]) error("Error writing to file");
                                 
                                 // If we just wrote the last packet, we're done! Close the file
                                 if (rcvbase == last_seqnum) {
@@ -236,6 +238,7 @@ int main(int argc, char *argv[]) {
                     //  too many packets) but that is OK
                     if (!already_in_buffer && free_buffer_index != -1) {
                         seqnums_for_ooo_buffers[free_buffer_index] = seqnum;
+                        sizes_for_ooo_buffers[free_buffer_index] = size;
                         memcpy(ooo_buffers[free_buffer_index], data, size);
                     }
                 }
