@@ -56,21 +56,11 @@ int write_to_file(FILE* file, char* data, int size) {
 int close_file(FILE* file) {
     if (fclose(file) == 0) {
         printf("File successfully transferred!\n");
+        exit(0);
     }
     else {
         error("Error closing file");
     }
-}
-
-int send_done(int sockfd, struct sockaddr* serv_addr, socklen_t addrlen) {
-    printf("Sending done...\n");
-    char done[1] = {'d'};
-    int i;
-    for (i = 0; i < 1000; ++i) {
-        sendto(sockfd, done, 1, 0, serv_addr, addrlen);
-    }
-    printf("Exiting.\n");
-    exit(0);
 }
 
 
@@ -87,6 +77,7 @@ int main(int argc, char *argv[]) {
     
     int sockfd;
     int i;
+    int recvlen;
     struct sockaddr_in serv_addr;
     socklen_t addrlen = sizeof(serv_addr);
     char buf[PACKET_SIZE];
@@ -107,17 +98,15 @@ int main(int argc, char *argv[]) {
     if (sendto(sockfd, filename, strlen(filename), 0, (struct sockaddr*)&serv_addr, addrlen) < 0) {
         error("Sendto failed");
     }
-
-    int window_size;
-    int recvlen;
-    while (1) {
+    
+    int window_size = 0;
+    while (window_size == 0) {
         recvlen = recvfrom(sockfd, buf, 10, 0, (struct sockaddr*)&serv_addr, &addrlen);
         if (recvlen > 0) {
-            window_size = atoi(&buf[0]);
-            break;
+            window_size = atoi(buf);
         }
     }
-    
+
     // Open (and create) the file we will be writing into
     // TODO use the actual name of the file we're requesting
     FILE* fp = fopen("TRANSFERRED_FILE", "wb");
@@ -192,7 +181,6 @@ int main(int argc, char *argv[]) {
                     // If this is the last packet, we're done! Close the file
                     if (rcvbase == last_seqnum) {
                         close_file(fp);
-                        send_done(sockfd, (struct sockaddr*)&serv_addr, addrlen);
                     }
                     
                     // Check data in the out-of-order buffers, writing to file as necessary
@@ -213,7 +201,6 @@ int main(int argc, char *argv[]) {
                                 // If we just wrote the last packet, we're done! Close the file
                                 if (rcvbase == last_seqnum) {
                                     close_file(fp);
-                                    return send_done(sockfd, (struct sockaddr*)&serv_addr, addrlen);
                                 }
                                 
                                 // Save the fact that we used this buffer, by setting it's seqnum to free
@@ -227,7 +214,7 @@ int main(int argc, char *argv[]) {
                 }
                 
                 // If we've received a packet from the future, put the out-of-order data in a buffer
-                else if (seqnum > rcvbase || (rcvbase - seqnum > NUM_SLOTS - window_size)) {
+                else if ((seqnum > rcvbase && (seqnum - rcvbase) < window_size) || (seqnum < rcvbase && (seqnum + NUM_SLOTS - rcvbase) < window_size)) {
                     int already_in_buffer = 0;
                     int free_buffer_index = -1;
                     
