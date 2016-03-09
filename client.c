@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
                     error("Sendto failed");
                 }
                 else {
-                    //printf("Sent ACK: %c%c\n", ack[0], ack[1]);
+                    printf("Sent ACK: %c%c\n", ack[0], ack[1]);
                 }
                 
                 // If we're told this is the last packet, set last_seqnum accordingly
