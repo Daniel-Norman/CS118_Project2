@@ -1,4 +1,4 @@
-Group number:
+Group number: 4
 
 Daniel Norman
 104501366
@@ -8,3 +8,20 @@ Mengfei (Fay) Wu
 
 
 How we divided the workload:
+Fay:
+Beginnings of server code.
+Algorithm design for both.
+Window management for server.
+Command-line argument accepting.
+Error/loss simulation using random numbers.
+Bug fixing.
+Initial report/slides writeup.
+
+Daniel:
+Beginnings of client code.
+Algorithm design for both.
+Writing and reading to a file.
+Accepting of data packets, including buffering of out of order packets.
+Parsing and creation of packets and headers.
+More bug fixing.
+Some additional work on report/slides.
