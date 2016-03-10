@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
             rand_corruption = rand() % 100;
             
             if (rand_loss < loss_rate) {
-                printf("Packet is lost.\n");
+                printf("Packet is lost. Not sending ACK so server resends this packet.\n");
             }
             else if (rand_corruption < corruption_rate) {
                 printf("Packet is corrupted. Not sending ACK so server resends this packet.\n");

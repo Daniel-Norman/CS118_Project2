@@ -229,9 +229,7 @@ int main(int argc, char *argv[]) {
         }
     }
     else {
-        memcpy(buf, "File doesn't exist.", 20);
-        printf("file doesn't exist!!");
-        sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&client_addr, addrlen);
+        error("File doesn't exist!");
     }
 }
 
