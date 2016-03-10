@@ -12,7 +12,7 @@
 #define ACK_SIZE 2
 #define NUM_SLOTS 30
 #define SEQNUM_UNUSED -1
-#define TIMEOUT_MS 50
+#define TIMEOUT_MS 100
 #define GIVEUP_MS 2000
 
 void error(char* err) {
